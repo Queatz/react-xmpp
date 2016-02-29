@@ -91,7 +91,7 @@ class XMPPApp extends Component {
 		var username = this.state.username;
 		var password = this.state.password;
 		
-		this.xmpp.connect(username, password, this.state.server);
+		this.xmpp.connect(username, password, this.state.server, 'required');
 	}
 	
 	disconnect() {

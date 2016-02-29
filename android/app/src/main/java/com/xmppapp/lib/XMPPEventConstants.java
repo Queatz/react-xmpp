@@ -4,7 +4,14 @@
 
 package com.xmppapp.lib;
 
+/**
+ * Package globals, some of which are exposed to React.
+ */
 public class XMPPEventConstants {
+
+    // Configuration
+    public static final String COMPONENT_MANE = "XMPPApp";
+
     // React events
     public static final String REACT_EVENT_NEW_CHAT = "react.xmpp.newChat";
     public static final String REACT_EVENT_PARAM_MESSAGE_BODY = "message";

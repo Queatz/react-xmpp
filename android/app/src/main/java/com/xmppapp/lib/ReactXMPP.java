@@ -4,62 +4,40 @@
 
 package com.xmppapp.lib;
 
-import android.os.AsyncTask;
 import android.support.annotation.Nullable;
 import android.util.Log;
 
-import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.WritableMap;
-import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
+import com.xmppapp.MainApplication;
+import com.xmppapp.XMPPController;
 
-import org.jivesoftware.smack.AbstractXMPPConnection;
 import org.jivesoftware.smack.ConnectionConfiguration;
-import org.jivesoftware.smack.ConnectionListener;
-import org.jivesoftware.smack.SmackException;
-import org.jivesoftware.smack.XMPPConnection;
-import org.jivesoftware.smack.XMPPException;
-import org.jivesoftware.smack.chat.Chat;
-import org.jivesoftware.smack.chat.ChatManager;
-import org.jivesoftware.smack.chat.ChatManagerListener;
-import org.jivesoftware.smack.chat.ChatMessageListener;
-import org.jivesoftware.smack.packet.Message;
-import org.jivesoftware.smack.tcp.XMPPTCPConnection;
-import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration;
 import org.jivesoftware.smack.util.StringUtils;
-import org.jxmpp.util.XmppStringUtils;
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
+import javax.annotation.Nonnull;
 
-public class ReactXMPP extends ReactContextBaseJavaModule implements ChatMessageListener, ChatManagerListener {
+/**
+ * The module exposed to React.
+ */
+public class ReactXMPP extends ReactContextBaseJavaModule {
 
     private static final String LOGGER = "ReactXMPP";
 
     DeviceEventManagerModule.RCTDeviceEventEmitter eventEmitter;
-    AbstractXMPPConnection connection;
-    ChatManager chatManager;
-
-    Map<String, Callback> callbackMap;
+    XMPPController xmppController;
 
     public ReactXMPP(ReactApplicationContext reactContext) {
         super(reactContext);
 
-        callbackMap = new HashMap<>();
+        xmppController = ((MainApplication) reactContext.getApplicationContext()).xmppController;
     }
 
     @Override
     public String getName() {
         return "ReactXMPP";
-    }
-
-    @ReactMethod
-    public void on(final String event, final Callback callback) {
-        callbackMap.put(event, callback);
     }
 
     /**
@@ -71,143 +49,48 @@ public class ReactXMPP extends ReactContextBaseJavaModule implements ChatMessage
      * @return true or false depending on if there were any errors thrown
      */
     @ReactMethod
-    public void connect(final String username, final String password, final String server) {
+    public void connect(
+            final String username,
+            final String password,
+            final String server,
+            final String securityMode
+    ) {
         if (StringUtils.isEmpty(username) || StringUtils.isEmpty(server)) {
             sendReactEvent(XMPPEventConstants.XMPP_EVENT_LOGIN_ERROR, "Missing server");
             return;
         }
 
-        XMPPTCPConnectionConfiguration.Builder configBuilder = XMPPTCPConnectionConfiguration.builder()
-                .setUsernameAndPassword(username, password)
-                .setHost(server)
-                .setSecurityMode(ConnectionConfiguration.SecurityMode.disabled)
-                .setServiceName(server);
-
-
-        connection = new XMPPTCPConnection(configBuilder.build());
-        connection.addConnectionListener(new ConnectionListener() {
+        xmppController.setCallbackHandler(new XMPPController.XMPPCallbackHandler() {
             @Override
-            public void connected(XMPPConnection c) {
-                sendReactEvent(XMPPEventConstants.XMPP_EVENT_CONNECT, null);
-
-                chatManager = ChatManager.getInstanceFor(connection);
-                chatManager.addChatListener(ReactXMPP.this);
-            }
-
-            @Override
-            public void authenticated(XMPPConnection connection, boolean resumed) {
-                sendReactEvent(XMPPEventConstants.XMPP_EVENT_LOGIN, null);
-            }
-
-            @Override
-            public void connectionClosed() {
-                sendReactEvent(XMPPEventConstants.XMPP_EVENT_DISCONNECT, null);
-            }
-
-            @Override
-            public void connectionClosedOnError(Exception e) {
-
-            }
-
-            @Override
-            public void reconnectionSuccessful() {
-
-            }
-
-            @Override
-            public void reconnectingIn(int seconds) {
-
-            }
-
-            @Override
-            public void reconnectionFailed(Exception e) {
-
+            public void onEvent(@Nonnull String eventName, @Nullable Object params) {
+                sendReactEvent(eventName, params);
             }
         });
 
-        new AsyncTask<Void, Void, Void>() {
-            @Override
-            protected Void doInBackground(Void[] voids) {
-
-                try {
-                    connection.connect().login();
-                } catch (SmackException | IOException | XMPPException e) {
-                    Log.w(LOGGER, "Can't connect to XMPP: ", e);
-
-                    sendReactEvent(XMPPEventConstants.XMPP_EVENT_LOGIN_ERROR, e.getLocalizedMessage());
-                }
-
-                return null;
-            }
-        }.execute();
+        xmppController.connect(username, password, server, securityModeFromString(securityMode));
     }
 
     @ReactMethod
     public void disconnect() {
-        if (connection != null && connection.isConnected()) {
-            connection.disconnect();
-        }
+        xmppController.disconnect();
     }
 
     @ReactMethod
     public void message(final String message, final String withJid) {
-        final String username = XmppStringUtils.completeJidFrom(
-                withJid,
-                connection.getServiceName(),
-                connection.getConfiguration().getResource()
-        );
-
-        Log.d(LOGGER, "Sending message from " + connection.getUser() + " to " + username + "...");
-
-        if (connection == null || !connection.isConnected()) {
-            Log.w(LOGGER, "Couldn't send message: no connection");
-            sendReactEvent(XMPPEventConstants.XMPP_EVENT_MESSAGE_ERROR, "No connection");
-            return;
-        }
-
-        if (!connection.isAuthenticated()) {
-            Log.w(LOGGER, "Couldn't send message: not authenticated");
-            sendReactEvent(XMPPEventConstants.XMPP_EVENT_MESSAGE_ERROR, "Not authenticated");
-            return;
-        }
-
-        new AsyncTask<Void, Void, Void>() {
-            @Override
-            protected Void doInBackground(Void[] voids) {
-
-                try {
-                    chatManager.createChat(username, ReactXMPP.this).sendMessage(message);
-                } catch (SmackException e) {
-                    Log.w(LOGGER, "Couldn't send message", e);
-                    sendReactEvent(XMPPEventConstants.XMPP_EVENT_MESSAGE_ERROR, e.getLocalizedMessage());
-                }
-
-                return null;
-            }
-        }.execute();
+        xmppController.message(message, withJid);
     }
 
-    @Override
-    public void chatCreated(Chat chat, boolean createdLocally) {
-        Log.d(LOGGER, "Chat created with " + chat.getParticipant() + "...");
-
-        if (!createdLocally) {
-            chat.addMessageListener(ReactXMPP.this);
+    private ConnectionConfiguration.SecurityMode securityModeFromString(@Nullable final String securityMode) {
+        if (securityMode == null) {
+            return ConnectionConfiguration.SecurityMode.ifpossible;
         }
-    }
 
-    @Override
-    public void processMessage(final Chat chat, final Message message) {
-        Log.d(LOGGER, "Got message from " + message.getFrom() + "...");
-
-        WritableMap map = new WritableNativeMap();
-        map.putString(XMPPEventConstants.REACT_EVENT_PARAM_FROM, getUsername(message.getFrom()));
-        map.putString(XMPPEventConstants.REACT_EVENT_PARAM_MESSAGE_BODY, message.getBody());
-        sendReactEvent(XMPPEventConstants.XMPP_EVENT_MESSAGE, map);
-    }
-
-    private String getUsername(String jid) {
-        return XmppStringUtils.parseLocalpart(jid);
+        try {
+            return ConnectionConfiguration.SecurityMode.valueOf(securityMode);
+        } catch (IllegalArgumentException e) {
+            Log.e(LOGGER, "Unknwon security mode: " + securityMode);
+            return ConnectionConfiguration.SecurityMode.ifpossible;
+        }
     }
 
     private void sendReactEvent(String eventName, @Nullable Object params) {
