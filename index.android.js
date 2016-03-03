@@ -17,6 +17,8 @@ import React, {
 	View
 } from 'react-native';
 
+import ReactXMPP from './lib/react-xmpp'
+
 class XMPPApp extends Component {
 
 	// Setup
@@ -24,7 +26,7 @@ class XMPPApp extends Component {
 	constructor() {
 		super();
 		
-		this.xmpp = NativeModules.ReactXMPP;
+		this.xmpp = ReactXMPP;
 		
 		this.state = {
 			statusText: 'React XMPP Client',
