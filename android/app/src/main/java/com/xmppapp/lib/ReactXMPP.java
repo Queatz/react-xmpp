@@ -88,7 +88,7 @@ public class ReactXMPP extends ReactContextBaseJavaModule {
         try {
             return ConnectionConfiguration.SecurityMode.valueOf(securityMode);
         } catch (IllegalArgumentException e) {
-            Log.e(LOGGER, "Unknwon security mode: " + securityMode);
+            Log.e(LOGGER, "Unknown security mode: " + securityMode);
             return ConnectionConfiguration.SecurityMode.ifpossible;
         }
     }
